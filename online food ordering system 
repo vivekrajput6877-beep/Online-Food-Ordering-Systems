@@ -1,0 +1,421 @@
+import java.io.*;
+import java.util.*;
+
+public class OnlineFoodOrderingSystem {
+
+    private static final String DATA_FILE = "orders.txt";
+    private static final Scanner sc = new Scanner(System.in);
+
+    static class MenuItem {
+        String id, name;
+        int price;
+
+        MenuItem(String id, String name, int price) {
+            this.id = id;
+            this.name = name;
+            this.price = price;
+        }
+    }
+
+    static class OrderItem {
+        MenuItem menuItem;
+        int quantity;
+
+        OrderItem(MenuItem menuItem, int quantity) {
+            this.menuItem = menuItem;
+            this.quantity = quantity;
+        }
+
+        int subtotal() {
+            return menuItem.price * quantity;
+        }
+
+        public String toString() {
+            return menuItem.name + " x" + quantity;
+        }
+    }
+
+    static class FoodOrder {
+        String orderId, customer;
+        ArrayList<OrderItem> items = new ArrayList<>();
+
+        FoodOrder(String orderId, String customer) {
+            this.orderId = orderId;
+            this.customer = customer;
+        }
+
+        int total() {
+            int sum = 0;
+            for (OrderItem item : items) {
+                sum += item.subtotal();
+            }
+            return sum;
+        }
+
+        String summary() {
+            StringBuilder sb = new StringBuilder();
+
+            for (int i = 0; i < items.size(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(items.get(i));
+            }
+
+            return sb.toString();
+        }
+    }
+
+    private static final ArrayList<MenuItem> menu = new ArrayList<>();
+    private static final Queue<FoodOrder> pendingOrders =
+            new LinkedList<>();
+
+    private static int nextOrderNumber = 101;
+
+    public static void main(String[] args) {
+
+        initializeMenu();
+        loadOrders();
+
+        System.out.println("====================================");
+        System.out.println("       ONLINE FOOD ORDERING SYSTEM");
+        System.out.println("====================================");
+
+        boolean running = true;
+
+        while (running) {
+            showMainMenu();
+
+            int choice = readInt("Enter your choice: ");
+
+            switch (choice) {
+                case 1:
+                    viewMenu();
+                    break;
+
+                case 2:
+                    placeOrder();
+                    break;
+
+                case 3:
+                    processNextOrder();
+                    break;
+
+                case 4:
+                    viewPendingOrders();
+                    break;
+
+                case 5:
+                    sortMenuByPrice();
+                    break;
+
+                case 6:
+                    saveOrders();
+                    System.out.println("Data saved. Thank you!");
+                    running = false;
+                    break;
+
+                default:
+                    System.out.println("Invalid menu option. Please choose 1-6.");
+            }
+        }
+    }
+
+    private static void initializeMenu() {
+
+        menu.add(new MenuItem("M101", "Veg Burger", 120));
+        menu.add(new MenuItem("M102", "Paneer Wrap", 150));
+        menu.add(new MenuItem("M103", "Cold Coffee", 90));
+    }
+
+    private static void showMainMenu() {
+
+        System.out.println("\n----------- MAIN MENU -----------");
+        System.out.println("1. View menu");
+        System.out.println("2. Place order");
+        System.out.println("3. Process next order");
+        System.out.println("4. View pending orders");
+        System.out.println("5. Sort menu by price");
+        System.out.println("6. Save and exit");
+    }
+
+    private static void viewMenu() {
+
+        System.out.println("\nID     ITEM                 PRICE");
+        System.out.println("---------------------------------");
+
+        for (MenuItem item : menu) {
+            System.out.printf("%-6s %-20s Rs. %d%n",
+                    item.id, item.name, item.price);
+        }
+    }
+
+    private static MenuItem findMenuItem(String id) {
+
+        for (MenuItem item : menu) {
+            if (item.id.equalsIgnoreCase(id)) {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private static void placeOrder() {
+
+        System.out.print("Enter customer name: ");
+        String customer = sc.nextLine().trim();
+
+        if (customer.isEmpty()) {
+            System.out.println("Customer name cannot be empty.");
+            return;
+        }
+
+        FoodOrder order = new FoodOrder(
+                String.format("O%03d", nextOrderNumber), customer);
+
+        Stack<OrderItem> itemStack = new Stack<>();
+
+        boolean adding = true;
+
+        while (adding) {
+
+            viewMenu();
+
+            System.out.println("\nEnter item code to add, R to remove last item, or D when done.");
+            System.out.print("Your choice: ");
+
+            String choice = sc.nextLine().trim();
+
+            if (choice.equalsIgnoreCase("D")) {
+                adding = false;
+            }
+
+            else if (choice.equalsIgnoreCase("R")) {
+
+                if (itemStack.empty()) {
+                    System.out.println("No item is available to remove.");
+                } else {
+                    OrderItem removed = itemStack.pop();
+                    System.out.println("Removed: " + removed);
+                }
+            }
+
+            else {
+
+                MenuItem selected = findMenuItem(choice);
+
+                if (selected == null) {
+                    System.out.println("Item " + choice.toUpperCase()
+                            + " not available.");
+                    continue;
+                }
+
+                int quantity = readInt("Enter quantity: ");
+
+                if (quantity <= 0) {
+                    System.out.println(
+                            "Quantity must be a positive whole number.");
+                    continue;
+                }
+
+                itemStack.push(new OrderItem(selected, quantity));
+
+                System.out.println("Added: " + selected.name
+                        + " x" + quantity);
+            }
+        }
+
+        if (itemStack.empty()) {
+            System.out.println(
+                    "Order cancelled because no items were added.");
+            return;
+        }
+
+        while (!itemStack.empty()) {
+            order.items.add(0, itemStack.pop());
+        }
+
+        pendingOrders.offer(order);
+        nextOrderNumber++;
+
+        saveOrders();
+
+        System.out.println("Order " + order.orderId + " placed. "
+                + order.customer + " | " + order.summary()
+                + " | Total: " + order.total());
+    }
+
+    private static void processNextOrder() {
+
+        FoodOrder order = pendingOrders.poll();
+
+        if (order == null) {
+            System.out.println("No pending orders.");
+        }
+
+        else {
+            System.out.println("Order " + order.orderId + " prepared.");
+
+            saveOrders();
+
+            if (pendingOrders.isEmpty()) {
+                System.out.println("No pending orders.");
+            }
+        }
+    }
+
+    private static void viewPendingOrders() {
+
+        if (pendingOrders.isEmpty()) {
+            System.out.println("No pending orders.");
+            return;
+        }
+
+        System.out.println("\nPENDING ORDERS (oldest first)");
+
+        int position = 1;
+
+        for (FoodOrder order : pendingOrders) {
+
+            System.out.println(position++ + ". "
+                    + order.orderId + " | "
+                    + order.customer + " | "
+                    + order.summary() + " | Total: "
+                    + order.total());
+        }
+    }
+
+    private static void sortMenuByPrice() {
+
+        menu.sort(Comparator.comparingInt(item -> item.price));
+
+        System.out.println("\nMenu sorted by price (low to high):");
+
+        viewMenu();
+    }
+
+    private static int readInt(String prompt) {
+
+        while (true) {
+
+            System.out.print(prompt);
+            String value = sc.nextLine().trim();
+
+            try {
+                return Integer.parseInt(value);
+            }
+
+            catch (NumberFormatException e) {
+                System.out.println("Please enter a valid whole number.");
+            }
+        }
+    }
+
+    private static void loadOrders() {
+
+        File file = new File(DATA_FILE);
+
+        if (!file.exists()) {
+            return;
+        }
+
+        try (BufferedReader reader =
+                     new BufferedReader(new FileReader(file))) {
+
+            String line = reader.readLine();
+
+            if (line != null && line.startsWith("NEXT_ID|")) {
+                nextOrderNumber =
+                        Integer.parseInt(line.substring(8).trim());
+            }
+
+            while ((line = reader.readLine()) != null) {
+
+                String[] parts = line.split("\\|", 3);
+
+                if (parts.length != 3) {
+                    continue;
+                }
+
+                FoodOrder order =
+                        new FoodOrder(parts[0], parts[1]);
+
+                if (!parts[2].isEmpty()) {
+
+                    for (String token : parts[2].split(";")) {
+
+                        String[] pair = token.split(",", 2);
+
+                        if (pair.length != 2) {
+                            continue;
+                        }
+
+                        MenuItem item = findMenuItem(pair[0]);
+
+                        if (item != null) {
+
+                            try {
+                                int qty = Integer.parseInt(pair[1]);
+
+                                if (qty > 0) {
+                                    order.items.add(
+                                            new OrderItem(item, qty));
+                                }
+                            }
+
+                            catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                }
+
+                if (!order.items.isEmpty()) {
+                    pendingOrders.offer(order);
+                }
+            }
+        }
+
+        catch (IOException | NumberFormatException e) {
+            System.out.println("Could not load saved orders: "
+                    + e.getMessage());
+        }
+    }
+
+    private static void saveOrders() {
+
+        try (PrintWriter writer =
+                     new PrintWriter(new FileWriter(DATA_FILE))) {
+
+            writer.println("NEXT_ID|" + nextOrderNumber);
+
+            for (FoodOrder order : pendingOrders) {
+
+                StringBuilder encodedItems = new StringBuilder();
+
+                for (int i = 0; i < order.items.size(); i++) {
+
+                    if (i > 0) {
+                        encodedItems.append(";");
+                    }
+
+                    OrderItem item = order.items.get(i);
+
+                    encodedItems.append(item.menuItem.id)
+                            .append(",")
+                            .append(item.quantity);
+                }
+
+                String safeName = order.customer
+                        .replace("|", " ")
+                        .replace("\n", " ");
+
+                writer.println(order.orderId + "|"
+                        + safeName + "|" + encodedItems);
+            }
+        }
+
+        catch (IOException e) {
+            System.out.println("Could not save orders: "
+                    + e.getMessage());
+        }
+    }
+}
